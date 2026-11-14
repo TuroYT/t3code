@@ -376,20 +376,26 @@ export const make = Effect.gen(function* () {
         reason: "The relay channel has no address or no local server to forward to.",
       } satisfies CloudManagedEndpointRuntimeStatus;
     }
-    const key = `${config.channelUrl}|${config.connectorToken}|${localOrigin}`;
+    const channelUrl = config.channelUrl;
+    const key = `${channelUrl}|${config.connectorToken}|${localOrigin}`;
     if ((yield* Ref.get(channelRef))?.key !== key) {
       yield* stopChannel;
       const state = { open: false };
-      const fiber = yield* RelayChannelClient.runRelayChannel({
-        channelUrl: config.channelUrl,
-        token: config.connectorToken,
-        localOrigin,
-        onOpenChange: (open) => {
-          state.open = open;
-          Queue.offerUnsafe(readinessChanges, undefined);
-        },
-      }).pipe(withRelayClientLog, Effect.forkIn(runtimeScope));
-      yield* Ref.set(channelRef, { key, fiber, state });
+      // An interrupt between the fork and the Ref would leave a channel nobody can stop.
+      yield* Effect.uninterruptible(
+        Effect.gen(function* () {
+          const fiber = yield* RelayChannelClient.runRelayChannel({
+            channelUrl,
+            token: config.connectorToken,
+            localOrigin,
+            onOpenChange: (open) => {
+              state.open = open;
+              Queue.offerUnsafe(readinessChanges, undefined);
+            },
+          }).pipe(withRelayClientLog, Effect.forkIn(runtimeScope));
+          yield* Ref.set(channelRef, { key, fiber, state });
+        }),
+      );
     }
     return {
       status: "running",

@@ -74,6 +74,10 @@ function flattenHeaders(headers: Readonly<Record<string, string | string[] | und
   return flat;
 }
 
+// Concurrent downloads each hold their body until it is complete, so the cap covers all of them.
+const MAX_IN_FLIGHT_BODY_BYTES = RELAY_CHANNEL_MAX_BODY_BYTES * 2;
+let inFlightBodyBytes = 0;
+
 async function forwardHttp(localOrigin: string, frame: HttpRequestFrame) {
   const failed = { type: "http-response", id: frame.id, status: 502, headers: {} } as const;
   const url = localTargetUrl(localOrigin, frame.path);
@@ -90,15 +94,25 @@ async function forwardHttp(localOrigin: string, frame: HttpRequestFrame) {
     // send bodies in chunked frames if streaming or large downloads must work over a relay.
     const chunks: Array<Buffer> = [];
     let size = 0;
-    for await (const chunk of response.body) {
-      size += (chunk as Buffer).byteLength;
-      if (size > RELAY_CHANNEL_MAX_BODY_BYTES) {
-        response.body.destroy();
-        return failed;
+    let body: Buffer;
+    try {
+      for await (const chunk of response.body) {
+        const length = (chunk as Buffer).byteLength;
+        if (
+          size + length > RELAY_CHANNEL_MAX_BODY_BYTES ||
+          inFlightBodyBytes + length > MAX_IN_FLIGHT_BODY_BYTES
+        ) {
+          response.body.destroy();
+          return failed;
+        }
+        size += length;
+        inFlightBodyBytes += length;
+        chunks.push(chunk as Buffer);
       }
-      chunks.push(chunk as Buffer);
+      body = Buffer.concat(chunks);
+    } finally {
+      inFlightBodyBytes -= size;
     }
-    const body = Buffer.concat(chunks);
     return {
       type: "http-response",
       id: frame.id,
@@ -266,13 +280,16 @@ export interface RelayChannelInput {
 export const runRelayChannel = Effect.fn("RelayChannelClient.run")(function* (
   input: RelayChannelInput,
 ) {
+  // The URL can carry a query string or credentials; only its host is safe to log.
   yield* Effect.logInfo("Connecting the T3 Connect relay channel", {
-    channelUrl: input.channelUrl,
+    relayHost: URL.canParse(input.channelUrl) ? new URL(input.channelUrl).host : "invalid",
   });
   let failures = 0;
   return yield* connectOnce(input).pipe(
     // The WebSocket constructor throws on a malformed URL; retry instead of ending the fiber.
-    Effect.catchDefect((defect) => Effect.succeed({ opened: false, reason: String(defect) })),
+    Effect.catchDefect(() =>
+      Effect.succeed({ opened: false, reason: "invalid channel configuration" }),
+    ),
     Effect.tap((ended) => {
       failures = ended.opened ? 0 : failures + 1;
       return Effect.logWarning("T3 Connect relay channel ended", { reason: ended.reason });

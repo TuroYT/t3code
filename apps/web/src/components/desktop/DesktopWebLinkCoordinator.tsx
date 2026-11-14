@@ -95,6 +95,7 @@ export function DesktopWebLinkCoordinator() {
   const httpBaseUrl = useEnvironmentHttpBaseUrl(primaryEnvironment?.environmentId ?? null);
   const queueRef = useRef(Promise.resolve());
   const pairedUrlsRef = useRef(new Set<string>());
+  const heldLinksRef = useRef<Array<string>>([]);
   const webLinks = window.desktopBridge?.webLinks;
   // A sync IPC read; the setting only changes across a relaunch.
   const [localEnvironmentDisabled] = useState(isLocalEnvironmentDisabled);
@@ -237,6 +238,13 @@ export function DesktopWebLinkCoordinator() {
   });
 
   const receiveLink = useEffectEvent((url: string) => {
+    // The sign-in flow waiting on an OIDC callback has its own subscriber, so the callback must
+    // reach it even while the environment is disconnected.
+    if (isDesktopOidcCallbackUrl(url)) return;
+    if (!ready) {
+      heldLinksRef.current.push(url);
+      return;
+    }
     // A connected server publishes its config before its project snapshot, so a source control
     // link delivered at launch would miss its project and fall through to the browser. Hold
     // those links until discovery settles; an ordinary link never waits for it.
@@ -253,7 +261,7 @@ export function DesktopWebLinkCoordinator() {
 
   // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- subscribes to desktop web link opens over the bridge and marks the renderer ready
   useEffect(() => {
-    if (!ready || webLinks === undefined) return;
+    if (webLinks === undefined) return;
     let subscribed = true;
     const unsubscribe = webLinks.onOpen(receiveLink);
     queueMicrotask(() => {
@@ -264,7 +272,13 @@ export function DesktopWebLinkCoordinator() {
       void webLinks.setReady(false).catch(() => undefined);
       unsubscribe();
     };
-  }, [ready, webLinks]);
+  }, [webLinks]);
+
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- replays links held while the environment was not connected
+  useEffect(() => {
+    if (!ready) return;
+    for (const url of heldLinksRef.current.splice(0)) receiveLink(url);
+  }, [ready]);
 
   return null;
 }
