@@ -23,7 +23,15 @@ function secureSessionStore(): KeyValueStore {
     },
     removeItem: (key) => {
       shadow.set(key, null);
-      void SecureStore.deleteItemAsync(secureStoreKey(key));
+      // A rejected delete would leave the token to be restored after a restart; blank it instead,
+      // which reads back as no session.
+      SecureStore.deleteItemAsync(secureStoreKey(key)).catch(() => {
+        try {
+          SecureStore.setItem(secureStoreKey(key), "");
+        } catch {
+          // Nothing more can be done; the in-memory shadow still reports signed out.
+        }
+      });
     },
   };
 }
