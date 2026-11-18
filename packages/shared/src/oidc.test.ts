@@ -185,7 +185,11 @@ describe("token requests", () => {
       metadata,
       clientId: "t3-code",
       refreshToken: "refresh-1",
-      fetch: async () => jsonResponse({ error: "invalid_grant" }, 400),
+      fetch: async () =>
+        jsonResponse(
+          { error: "invalid_grant", error_description: "AADSTS70000: The grant has expired." },
+          400,
+        ),
     }).catch((error: unknown) => error);
     const unavailable = await refreshOidcTokens({
       metadata,
@@ -194,6 +198,10 @@ describe("token requests", () => {
       fetch: async () => jsonResponse({}, 503),
     }).catch((error: unknown) => error);
 
+    expect(rejected).toMatchObject({
+      oauthError: "invalid_grant",
+      message: "The token request failed with 400: AADSTS70000: The grant has expired.",
+    });
     expect(isPermanentRefreshFailure(rejected)).toBe(true);
     expect(isPermanentRefreshFailure(unavailable)).toBe(false);
   });
