@@ -216,7 +216,7 @@ NodeRuntime.runMain(
     Effect.scoped,
     Effect.provide(
       Layer.mergeAll(
-        offboardArgs === null ? serverLayer : Layer.empty,
+        args.length === 0 ? serverLayer : Layer.empty,
         NodeServices.layer,
         FetchHttpClient.layer,
         SecureRandom.layerWebCrypto,
