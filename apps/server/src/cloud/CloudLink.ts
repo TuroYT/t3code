@@ -91,8 +91,10 @@ import {
   HOLD_WEBHOOKS_WHILE_OFFLINE_SECRET,
   PUBLISH_AGENT_ACTIVITY_SECRET,
   readRelayConnection,
+  readRelayRemoteControlAllowed,
   RELAY_ENVIRONMENT_CREDENTIAL_SECRET,
   RELAY_ISSUER_SECRET,
+  RELAY_REMOTE_CONTROL_OFF_SECRET,
   RELAY_URL_SECRET,
 } from "./config.ts";
 import { EnvironmentSigningKey } from "./environmentKeys.ts";
@@ -738,6 +740,7 @@ const make = Effect.gen(function* () {
         if (Option.isNone(runtimeBytes)) return false;
         const config = Option.getOrNull(decodeRuntimeConfig(bytesToString(runtimeBytes.value)));
         if (config?.providerKind === "t3_relay") {
+          if (!(yield* readRelayRemoteControlAllowed.pipe(withSecrets))) return false;
           // The channel dials out and forwards to whatever port this server listens on now.
           const status = yield* endpointRuntime.applyConfig(config, localOrigin);
           if (status.status !== "running") {
@@ -799,8 +802,17 @@ const make = Effect.gen(function* () {
           },
         });
       }
-      const endpointRuntimeJson = payload.endpointRuntime
-        ? yield* encodeEndpointRuntimeConfigJson(payload.endpointRuntime)
+      const remoteControlRefused =
+        payload.endpointRuntime?.providerKind === "t3_relay" &&
+        !(yield* readRelayRemoteControlAllowed.pipe(withSecrets));
+      if (remoteControlRefused) {
+        yield* Effect.logInfo(
+          "T3 Connect remote control through the relay is off; this link only publishes activity.",
+        );
+      }
+      const runtimeConfig = remoteControlRefused ? null : payload.endpointRuntime;
+      const endpointRuntimeJson = runtimeConfig
+        ? yield* encodeEndpointRuntimeConfigJson(runtimeConfig)
         : null;
       yield* endpointRuntime.applyConfig(null);
       yield* secrets.remove(CLOUD_ENDPOINT_CONFIRMED_ORIGIN);
@@ -823,14 +835,14 @@ const make = Effect.gen(function* () {
       if (endpointRuntimeJson !== null) {
         yield* secrets.set(CLOUD_ENDPOINT_RUNTIME_CONFIG, stringToBytes(endpointRuntimeJson));
       }
-      if (payload.endpointRuntime === null || options?.confirmedOrigin === undefined) {
+      if (runtimeConfig === null || options?.confirmedOrigin === undefined) {
         return {
           ok: true,
           endpointRuntimeStatus: { status: "disabled" },
         } satisfies EnvironmentCloudRelayConfigResult;
       }
       const endpointRuntimeStatus = yield* endpointRuntime.applyConfig(
-        payload.endpointRuntime,
+        runtimeConfig,
         localOriginUrl(options.confirmedOrigin),
       );
       if (endpointRuntimeStatus.status !== "running") {
@@ -840,7 +852,7 @@ const make = Effect.gen(function* () {
         });
       }
       const marker = yield* encodeConfirmedOriginJson({
-        config: payload.endpointRuntime,
+        config: runtimeConfig,
         origin: options.confirmedOrigin,
       });
       yield* secrets.set(CLOUD_ENDPOINT_CONFIRMED_ORIGIN, stringToBytes(marker));
@@ -1401,6 +1413,7 @@ const make = Effect.gen(function* () {
               secrets.remove(PUBLISH_AGENT_ACTIVITY_SECRET),
               secrets.remove(HOLD_WEBHOOKS_WHILE_OFFLINE_SECRET),
               secrets.remove(CLOUD_LINK_REVOKED),
+              secrets.remove(RELAY_REMOTE_CONTROL_OFF_SECRET),
             ],
             { concurrency: 10 },
           );
