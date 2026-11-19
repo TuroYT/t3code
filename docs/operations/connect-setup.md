@@ -34,6 +34,18 @@ Copy `infra/relay/.env.example` to `infra/relay/.env` for relay deployment setti
 Deploy `prod` before personal stages because it owns the retained database that their branches
 depend on. The stack's `PublishClientConfig` action writes the resulting relay URL back to the root `.env`.
 
+## Restricting relays
+
+A build lets users switch to any self-hosted relay under **T3 Connect service** unless it sets:
+
+| Variable                 | Effect                                                                                                                                                                 |
+| ------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `T3CODE_RELAY_PINNED`    | `true`: web, desktop and mobile use only `T3CODE_RELAY_URL`. The service choice is hidden and a relay chosen earlier is ignored.                                       |
+| `T3CODE_RELAY_ALLOWLIST` | Comma-separated HTTPS origins the self-hosted choice accepts; any other address is refused before it is contacted. An allowlist with no valid origin hides the choice. |
+
+Sign-in sessions are bound to the relay they were obtained for, so a switch always signs in again.
+The CLI's stored credential is bound to `T3CODE_RELAY_URL` the same way.
+
 ## CLI OAuth application
 
 In Clerk's OAuth applications settings:
