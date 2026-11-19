@@ -34,7 +34,7 @@ Copy `infra/relay/.env.example` to `infra/relay/.env` for relay deployment setti
 Deploy `prod` before personal stages because it owns the retained database that their branches
 depend on. The stack's `PublishClientConfig` action writes the resulting relay URL back to the root `.env`.
 
-## Restricting relays and Android transport
+## Restricting relays
 
 A build lets users switch to any self-hosted relay under **T3 Connect service** unless it sets:
 
@@ -45,14 +45,6 @@ A build lets users switch to any self-hosted relay under **T3 Connect service** 
 
 Sign-in sessions are bound to the relay they were obtained for, so a switch always signs in again.
 The CLI's stored credential is bound to `T3CODE_RELAY_URL` the same way.
-
-Android preview and production builds allow only HTTPS with system CAs. Development builds also
-allow cleartext and user-installed CAs. To re-enable either in a release build:
-
-| Variable                         | Effect                                                                                                     |
-| -------------------------------- | ---------------------------------------------------------------------------------------------------------- |
-| `T3CODE_ANDROID_ALLOW_CLEARTEXT` | `1`: allow `http://`. Pairing directly with an environment at an `http://` LAN address needs this.         |
-| `T3CODE_ANDROID_TRUST_USER_CAS`  | `1`: trust CAs in the device's user store, for environments or relays behind a private CA installed there. |
 
 ## CLI OAuth application
 

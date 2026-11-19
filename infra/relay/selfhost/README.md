@@ -11,7 +11,7 @@ metadata about them, and with relay channels their live traffic passes through i
 [What the relay stores and sees](#what-the-relay-stores-and-sees)).
 
 Whoever controls the relay host, its signing key or its HTTPS endpoint can reach every machine
-linked to it. Before running it for a team, read [Running T3 Code in-house](./OPERATING.md).
+linked to it. Before running it for a team, read [Operating a self-hosted relay](./OPERATING.md).
 
 ## Setup
 
@@ -65,7 +65,7 @@ Run these from the repository root.
      sessions ask for a new sign-in daily.
 
    Restrict who can sign in before anyone links a machine: see
-   [Entra ID hardening](./OPERATING.md#entra-id-hardening).
+   [identity provider settings](./OPERATING.md#identity-provider).
 
 4. Start it:
 
